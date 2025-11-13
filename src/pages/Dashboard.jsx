@@ -1,136 +1,335 @@
-import React from 'react';
-import { Clock, ShoppingCart, TrendingUp, CheckCircle, Truck } from 'lucide-react';
-import { useData } from '../hooks/useData';
-import StatusBadge from '../components/ui/StatusBadge';
+import React, { useState, useEffect } from 'react';
 
 const Dashboard = () => {
-  const { orders, products, users } = useData();
-  
-  const today = new Date().toISOString().split('T')[0];
-  const todayOrders = orders.filter(o => o.date.startsWith(today));
-  const todaySales = todayOrders.reduce((sum, o) => sum + o.total, 0);
-  const activeOrders = orders.filter(o => o.status !== 'delivered').length;
-  const lowStockProducts = products.filter(p => p.stock <= p.minStock).length;
-  const newCustomers = users.filter(u => u.registeredDate === today && u.role === 'user').length;
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const topProducts = products
-    .filter(p => p.sales > 0)
-    .sort((a, b) => b.sales - a.sales)
-    .slice(0, 4)
-    .map(p => ({
-      name: p.name,
-      sales: p.sales,
-      revenue: `S/ ${(p.sales * (p.price || 15)).toFixed(0)}`,
-      trend: '+15%'
-    }));
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
 
-  const recentOrders = orders.slice(0, 4).map(order => ({
-    ...order,
-    icon: order.status === 'ready' ? CheckCircle : order.status === 'preparing' ? Clock : Truck
-  }));
+  const fetchDashboardStats = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('http://127.0.0.1:8000/api/dashboard/stats', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
 
-  const stats = [
-    { label: 'Ventas Hoy', value: `S/ ${todaySales.toFixed(2)}`, change: '+12%', trend: 'up', color: 'from-green-400 to-green-600', icon: '💰' },
-    { label: 'Pedidos Activos', value: activeOrders.toString(), change: `+${todayOrders.length} nuevos`, trend: 'up', color: 'from-blue-400 to-blue-600', icon: '📋' },
-    { label: 'Productos Bajo Stock', value: lowStockProducts.toString(), change: '-3 desde ayer', trend: 'down', color: 'from-yellow-400 to-yellow-600', icon: '⚠️' },
-    { label: 'Clientes Nuevos', value: newCustomers.toString(), change: '+18%', trend: 'up', color: 'from-purple-400 to-purple-600', icon: '👥' },
-  ];
+      const data = await response.json();
+      if (data.success) {
+        setStats(data.data);
+      } else {
+        setError('Error al cargar estadísticas');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-100 border-2 border-red-400 text-red-700 px-4 py-3 rounded-lg">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-4xl font-bold text-gray-800">Dashboard</h2>
-          <p className="text-gray-600 mt-1">Panel de control en tiempo real</p>
-        </div>
-        <div className="flex items-center space-x-2 text-sm text-gray-600 bg-white px-4 py-2 rounded-lg shadow">
-          <Clock size={16} />
-          <span className="font-medium">Actualizado: {new Date().toLocaleTimeString('es-PE')}</span>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <div key={index} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all border border-gray-100">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-600">{stat.label}</p>
-                <p className="text-3xl font-bold text-gray-800 mt-2">{stat.value}</p>
-                <p className={`text-sm mt-2 font-semibold ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
-                  {stat.change}
-                </p>
-              </div>
-              <div className={`bg-gradient-to-br ${stat.color} w-14 h-14 rounded-xl flex items-center justify-center text-2xl shadow-lg`}>
-                {stat.icon}
-              </div>
-            </div>
-          </div>
-        ))}
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-gray-800 flex items-center space-x-3">
+          <span className="text-4xl">📊</span>
+          <span>Dashboard</span>
+        </h1>
+        <p className="text-gray-600 mt-1">Panel de control y estadísticas</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-800">Productos Más Vendidos</h3>
-            <TrendingUp className="text-green-500" size={24} />
+      {/* Tarjetas principales */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Ventas de Hoy */}
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-green-100 text-sm font-medium">Ventas de Hoy</p>
+              <p className="text-3xl font-bold mt-2">S/. {stats?.today_sales?.total || 0}</p>
+            </div>
+            <span className="text-6xl opacity-80">💰</span>
           </div>
-          <div className="space-y-4">
-            {topProducts.map((product, i) => (
-              <div key={i} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="flex items-center space-x-4">
-                  <div className="bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold w-10 h-10 rounded-full flex items-center justify-center text-sm shadow-md">
-                    {i + 1}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800">{product.name}</p>
-                    <p className="text-sm text-gray-600">{product.sales} unidades vendidas</p>
-                  </div>
+          <div className="flex items-center space-x-2 text-sm">
+            {stats?.today_sales?.change >= 0 ? (
+              <>
+                <span className="text-green-200">↗</span>
+                <span>+{stats?.today_sales?.change}% vs ayer</span>
+              </>
+            ) : (
+              <>
+                <span className="text-red-200">↘</span>
+                <span>{stats?.today_sales?.change}% vs ayer</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Pedidos Activos */}
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-blue-100 text-sm font-medium">Pedidos Activos</p>
+              <p className="text-3xl font-bold mt-2">{stats?.active_orders?.count || 0}</p>
+            </div>
+            <span className="text-6xl opacity-80">🍔</span>
+          </div>
+          <div className="text-sm text-blue-100">
+            {stats?.active_orders?.total_today || 0} pedidos hoy
+          </div>
+        </div>
+
+        {/* Productos Bajo de Stock */}
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-orange-100 text-sm font-medium">Stock Bajo</p>
+              <p className="text-3xl font-bold mt-2">{stats?.low_stock?.count || 0}</p>
+            </div>
+            <span className="text-6xl opacity-80">⚠️</span>
+          </div>
+          <div className="text-sm text-orange-100">
+            Productos requieren compra
+          </div>
+        </div>
+
+        {/* Clientes Nuevos */}
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-purple-100 text-sm font-medium">Clientes Nuevos</p>
+              <p className="text-3xl font-bold mt-2">{stats?.new_customers?.count || 0}</p>
+            </div>
+            <span className="text-6xl opacity-80">👥</span>
+          </div>
+          <div className="text-sm text-purple-100">
+            Última semana
+          </div>
+        </div>
+      </div>
+
+      {/* Productos Más Vendidos */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
+          <span className="text-2xl">🏆</span>
+          <span>Productos Más Vendidos</span>
+        </h2>
+        
+        <div className="space-y-4">
+          {stats?.top_products?.length > 0 ? (
+            stats.top_products.map((product, index) => (
+              <div key={product.id} className="flex items-center space-x-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-red-500 to-orange-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                  {index + 1}
+                </div>
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="w-16 h-16 rounded-lg object-cover"
+                  onError={(e) => {
+                    e.target.src = 'https://via.placeholder.com/100?text=Producto';
+                  }}
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800">{product.name}</p>
+                  <p className="text-sm text-gray-500">{product.category}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-gray-800">{product.revenue}</p>
-                  <p className="text-sm text-green-600 font-medium">{product.trend}</p>
+                  <p className="font-bold text-gray-800">{product.sales}</p>
+                  <p className="text-sm text-gray-500">ventas</p>
                 </div>
               </div>
-            ))}
+            ))
+          ) : (
+            <p className="text-gray-500 text-center py-8">No hay datos de ventas aún</p>
+          )}
+        </div>
+      </div>
+
+      {/* Productos Bajo de Stock - Detalle */}
+      {stats?.low_stock?.items?.length > 0 && (
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
+            <span className="text-2xl">📦</span>
+            <span>Inventario Bajo de Stock</span>
+          </h2>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-orange-100">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Producto</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Stock Actual</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Stock Mínimo</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {stats.low_stock.items.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-medium text-gray-800">{item.name}</p>
+                        <p className="text-sm text-gray-500">{item.category}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-orange-600">{item.stock} {item.unit}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-gray-600">{item.min_stock} {item.unit}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium">
+                        ⚠️ Crítico
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-800">Pedidos Recientes</h3>
-            <ShoppingCart className="text-blue-500" size={24} />
-          </div>
-          <div className="space-y-4">
-            {recentOrders.map((order) => {
-              const StatusIcon = order.icon;
+      {/* Ventas por Día */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
+          <span className="text-2xl">📈</span>
+          <span>Ventas de la Semana</span>
+        </h2>
+        
+        {stats?.sales_by_day?.length > 0 ? (
+          <div className="space-y-3">
+            {stats.sales_by_day.map((day) => {
+              const maxSale = Math.max(...stats.sales_by_day.map(d => parseFloat(d.total)));
+              const percentage = (parseFloat(day.total) / maxSale) * 100;
+              
               return (
-                <div key={order.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-                  <div className="flex items-center space-x-3">
-                    <StatusIcon size={20} className={
-                      order.status === 'ready' ? 'text-green-500' :
-                      order.status === 'preparing' ? 'text-blue-500' : 'text-yellow-500'
-                    } />
-                    <div>
-                      <p className="font-bold text-gray-800">Pedido #{order.id}</p>
-                      <p className="text-sm text-gray-600">{order.table}</p>
-                      <p className="text-xs text-gray-500 mt-1">{order.time}</p>
+                <div key={day.date} className="flex items-center space-x-4">
+                  <div className="w-24 text-sm font-medium text-gray-700">
+                    {new Date(day.date).toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                  </div>
+                  <div className="flex-1">
+                    <div className="bg-gray-200 rounded-full h-8 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-green-500 to-green-600 h-full flex items-center justify-end pr-3 text-white text-sm font-bold rounded-full transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      >
+                        {percentage > 15 && `S/. ${parseFloat(day.total).toFixed(2)}`}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-800">S/ {order.total}</p>
-                    <StatusBadge 
-                      status={order.status} 
-                      text={
-                        order.status === 'pending' ? 'Pendiente' : 
-                        order.status === 'preparing' ? 'Preparando' : 
-                        order.status === 'ready' ? 'Listo' : 'Entregado'
-                      } 
-                      type="order"
-                    />
-                  </div>
+                  {percentage <= 15 && (
+                    <div className="w-24 text-right text-sm font-bold text-gray-700">
+                      S/. {parseFloat(day.total).toFixed(2)}
+                    </div>
+                  )}
                 </div>
               );
             })}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-center py-8">No hay datos de ventas esta semana</p>
+        )}
+      </div>
+
+      {/* Métodos de Pago y Tipos de Pedido */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Métodos de Pago */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
+            <span className="text-2xl">💳</span>
+            <span>Métodos de Pago (Hoy)</span>
+          </h2>
+          
+          {stats?.payment_methods?.length > 0 ? (
+            <div className="space-y-3">
+              {stats.payment_methods.map((method) => (
+                <div key={method.payment_method} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">{method.payment_method}</span>
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-bold">
+                    {method.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">Sin pedidos hoy</p>
+          )}
+        </div>
+
+        {/* Tipos de Pedido */}
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center space-x-2">
+            <span className="text-2xl">🚚</span>
+            <span>Distribución de Pedidos (Hoy)</span>
+          </h2>
+          
+          {stats?.orders_by_type?.length > 0 ? (
+            <div className="space-y-3">
+              {stats.orders_by_type.map((type) => (
+                <div key={type.type} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-700">{type.type}</span>
+                  <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-bold">
+                    {type.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">Sin pedidos hoy</p>
+          )}
+        </div>
+      </div>
+
+      {/* Resumen Ejecutivo */}
+      <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-lg p-6 text-white">
+        <h2 className="text-xl font-bold mb-6 flex items-center space-x-2">
+          <span className="text-2xl">📋</span>
+          <span>Resumen Ejecutivo</span>
+        </h2>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div>
+            <p className="text-gray-400 text-sm">Ingresos Totales</p>
+            <p className="text-2xl font-bold mt-1">S/. {stats?.summary?.total_revenue || 0}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm">Pedidos Totales</p>
+            <p className="text-2xl font-bold mt-1">{stats?.summary?.total_orders || 0}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm">Ticket Promedio</p>
+            <p className="text-2xl font-bold mt-1">S/. {stats?.summary?.average_ticket || 0}</p>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm">Total Clientes</p>
+            <p className="text-2xl font-bold mt-1">{stats?.summary?.total_customers || 0}</p>
           </div>
         </div>
       </div>
